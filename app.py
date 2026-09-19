@@ -97,58 +97,118 @@ col4.metric("Top Customer", top_customer_name, help=top_customer_name)
 
 st.divider()
 
-# ---------- QUERY HISTORY ----------
-if "history" not in st.session_state:
-    st.session_state.history = []
+# ---------- SESSION STATE ----------
+if "messages" not in st.session_state:
+    st.session_state.messages = []  # list of dicts describing each Q&A turn
 
-# ---------- CHAT INPUT ----------
-user_question = st.text_input(
-    "Ask a question about your business data:",
-    placeholder="e.g. What are the top 5 products by revenue?"
-)
+if "pending_question" not in st.session_state:
+    st.session_state.pending_question = None
 
-if user_question:
-    with st.spinner("Thinking..."):
-        schema = get_schema_info()
-        sql_query = generate_sql(user_question, schema)
 
-    if sql_query.strip() == "INVALID_QUESTION":
-        st.warning("Sorry, I couldn't turn that into a valid query. Try rephrasing your question.")
-    else:
+def render_answer(entry):
+    """Renders one assistant turn: SQL, insight, table, CSV download, chart."""
+    with st.expander("🔍 View Generated SQL"):
+        st.code(entry["sql"], language="sql")
+    st.info(f"💡 {entry['summary']}")
+    st.dataframe(entry["result"], width="stretch")
+
+    csv_bytes = entry["result"].to_csv(index=False).encode("utf-8")
+    st.download_button(
+        label="⬇️ Download CSV",
+        data=csv_bytes,
+        file_name="query_result.csv",
+        mime="text/csv",
+        key=f"csv_download_{entry['id']}",
+    )
+
+    render_visualization(entry["question"], entry["result"])
+
+
+def handle_question(question):
+    """Runs the full pipeline for a question and stores the result in history."""
+    with st.chat_message("assistant"):
+        with st.spinner("Thinking..."):
+            schema = get_schema_info()
+            sql_query = generate_sql(question, schema)
+
+        if sql_query.strip() == "INVALID_QUESTION":
+            st.warning("Sorry, I couldn't turn that into a valid query. Try rephrasing your question.")
+            st.session_state.messages.append({
+                "id": len(st.session_state.messages),
+                "question": question,
+                "kind": "invalid",
+            })
+            return
+
         try:
-            # Flow: Generated SQL -> SQL Validator -> MySQL
             result_df = run_query_safely(sql_query)
-
-            with st.expander("🔍 View Generated SQL"):
-                st.code(sql_query, language="sql")
-
             with st.spinner("Generating insight..."):
-                summary_text = generate_business_summary(user_question, result_df)
-            st.info(f"💡 {summary_text}")
+                summary_text = generate_business_summary(question, result_df)
 
-            st.subheader("Result")
-            st.dataframe(result_df, width="stretch")
-
-            render_visualization(user_question, result_df)
-
-            st.session_state.history.insert(0, {
-                "question": user_question,
+            entry = {
+                "id": len(st.session_state.messages),
+                "question": question,
                 "sql": sql_query,
                 "result": result_df,
-                "summary": summary_text
-            })
+                "summary": summary_text,
+                "kind": "answer",
+            }
+            render_answer(entry)
+            st.session_state.messages.append(entry)
 
         except ValueError as e:
             st.error(f"🚫 {e}")
+            st.session_state.messages.append({
+                "id": len(st.session_state.messages),
+                "question": question,
+                "kind": "error",
+                "message": f"🚫 {e}",
+            })
         except Exception as e:
             st.error(f"Something went wrong running this query: {e}")
+            st.session_state.messages.append({
+                "id": len(st.session_state.messages),
+                "question": question,
+                "kind": "error",
+                "message": f"Something went wrong running this query: {e}",
+            })
 
-# ---------- QUERY HISTORY DISPLAY ----------
-if st.session_state.history:
-    st.divider()
-    st.subheader("🕒 Query History")
-    for i, entry in enumerate(st.session_state.history[:5]):
-        with st.expander(f"{entry['question']}"):
-            st.code(entry["sql"], language="sql")
-            st.caption(entry.get("summary", ""))
-            st.dataframe(entry["result"], width="stretch")
+
+# ---------- SUGGESTED QUESTION CHIPS ----------
+st.write("**Try asking:**")
+suggested_questions = [
+    "Top 5 products by revenue",
+    "Total sales by city",
+    "Which customer type buys the most?",
+    "Monthly revenue trend",
+]
+chip_cols = st.columns(len(suggested_questions))
+for col, question_text in zip(chip_cols, suggested_questions):
+    if col.button(question_text, width="stretch"):
+        st.session_state.pending_question = question_text
+
+st.divider()
+
+# ---------- REPLAY EXISTING CONVERSATION ----------
+for entry in st.session_state.messages:
+    with st.chat_message("user"):
+        st.write(entry["question"])
+    with st.chat_message("assistant"):
+        if entry["kind"] == "invalid":
+            st.warning("Sorry, I couldn't turn that into a valid query. Try rephrasing your question.")
+        elif entry["kind"] == "error":
+            st.error(entry["message"])
+        else:
+            render_answer(entry)
+
+# ---------- CHAT INPUT ----------
+typed_question = st.chat_input("Ask a question about your business data...")
+
+# A clicked suggestion chip takes priority if present this run
+active_question = st.session_state.pending_question or typed_question
+st.session_state.pending_question = None  # clear so it only fires once
+
+if active_question:
+    with st.chat_message("user"):
+        st.write(active_question)
+    handle_question(active_question)
