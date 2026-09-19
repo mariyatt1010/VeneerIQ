@@ -69,8 +69,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("AI-Powered BI Dashboard")
-st.caption("Ask a business question in plain English — powered by Gemini + MySQL")
+st.markdown(""" <div style="text-align: center; padding: 1rem 0;"> <h1 style="margin-bottom: 0;">Veneer Insights</h1> <p style="color: #8B6F47; font-size: 1.1rem; margin-top: 0.25rem;"> Turn your business data into actionable insights </p> </div> """, unsafe_allow_html=True)
 
 # ---------- KPI CARDS ----------
 @st.cache_data(ttl=60)
