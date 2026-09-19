@@ -2,10 +2,20 @@ import os
 import time
 from google import genai
 from dotenv import load_dotenv
+import streamlit as st
 
 load_dotenv()
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+def get_config(key, default=None):
+    value = os.getenv(key)
+    if value is None:
+        try:
+            value = st.secrets.get(key, default)
+        except Exception:
+            value = default
+    return value
+
+GEMINI_API_KEY = get_config("GEMINI_API_KEY")
 client = genai.Client(api_key=GEMINI_API_KEY)
 
 MODEL_NAME = "gemini-flash-lite-latest"

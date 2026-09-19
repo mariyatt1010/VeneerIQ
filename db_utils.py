@@ -8,11 +8,21 @@ from sql_validator import validate_sql, enforce_row_limit
 # Load secret values (host, password, etc.) from the .env file
 load_dotenv()
 
-DB_HOST = os.getenv("DB_HOST")
-DB_PORT = os.getenv("DB_PORT", "3306")
-DB_USER = os.getenv("DB_USER")
-DB_PASSWORD = os.getenv("DB_PASSWORD")
-DB_NAME = os.getenv("DB_NAME")
+def get_config(key, default=None):
+    value = os.getenv(key)
+    if value is None:
+        try:
+            import streamlit as st
+            value = st.secrets.get(key, default)
+        except Exception:
+            value = default
+    return value
+
+DB_HOST = get_config("DB_HOST")
+DB_PORT = get_config("DB_PORT", "3306")
+DB_USER = get_config("DB_USER")
+DB_PASSWORD = get_config("DB_PASSWORD")
+DB_NAME = get_config("DB_NAME")
 
 
 def get_connection():
