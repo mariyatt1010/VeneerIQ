@@ -2,7 +2,7 @@ import streamlit as st
 import plotly.express as px
 
 
-def render_visualization(user_question, result_df):
+def render_visualization(user_question, result_df, key=None):
     """
     Automatically picks and renders the most appropriate visualization,
     based on the shape of the result data and hints in the question text.
@@ -27,7 +27,7 @@ def render_visualization(user_question, result_df):
             result_df, x=date_like_cols[0], y=numeric_cols[-1], markers=True,
             title=f"{numeric_cols[-1].replace('_', ' ').title()} over {date_like_cols[0].replace('_', ' ').title()}"
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key=f"{key}_line")
         return
 
     # Case 3: Question implies "share/breakdown" and few categories -> Pie chart
@@ -37,7 +37,7 @@ def render_visualization(user_question, result_df):
             result_df, names=text_cols[0], values=numeric_cols[-1],
             title=f"{numeric_cols[-1].replace('_', ' ').title()} by {text_cols[0].replace('_', ' ').title()}"
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key=f"{key}_pie")
         return
 
     # Case 4: Default -> Bar chart (great for "top N", "by customer", "by category", rankings)
@@ -46,7 +46,7 @@ def render_visualization(user_question, result_df):
             result_df, x=text_cols[0], y=numeric_cols[-1],
             title=f"{numeric_cols[-1].replace('_', ' ').title()} by {text_cols[0].replace('_', ' ').title()}"
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key=f"{key}_bar")
         return
 
     # Otherwise: no chart type clearly fits (e.g. too many rows, no numeric column) - skip silently

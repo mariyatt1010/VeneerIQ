@@ -120,7 +120,7 @@ def render_answer(entry):
         key=f"csv_download_{entry['id']}",
     )
 
-    render_visualization(entry["question"], entry["result"])
+    render_visualization(entry["question"], entry["result"], key=f"viz_{entry['id']}")
 
 
 def handle_question(question):
