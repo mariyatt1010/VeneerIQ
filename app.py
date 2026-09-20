@@ -123,54 +123,62 @@ def render_answer(entry):
     render_visualization(entry["question"], entry["result"], key=f"viz_{entry['id']}")
 
 
-def handle_question(question):
-    """Runs the full pipeline for a question and stores the result in history."""
+def render_entry(entry):
+    """Renders one full turn (user question + assistant reply) for history display."""
+    with st.chat_message("user"):
+        st.write(entry["question"])
     with st.chat_message("assistant"):
-        with st.spinner("Thinking..."):
-            schema = get_schema_info()
-            sql_query = generate_sql(question, schema)
-
-        if sql_query.strip() == "INVALID_QUESTION":
+        if entry["kind"] == "invalid":
             st.warning("Sorry, I couldn't turn that into a valid query. Try rephrasing your question.")
-            st.session_state.messages.append({
-                "id": len(st.session_state.messages),
-                "question": question,
-                "kind": "invalid",
-            })
-            return
-
-        try:
-            result_df = run_query_safely(sql_query)
-            with st.spinner("Generating insight..."):
-                summary_text = generate_business_summary(question, result_df)
-
-            entry = {
-                "id": len(st.session_state.messages),
-                "question": question,
-                "sql": sql_query,
-                "result": result_df,
-                "summary": summary_text,
-                "kind": "answer",
-            }
+        elif entry["kind"] == "error":
+            st.error(entry["message"])
+        else:
             render_answer(entry)
-            st.session_state.messages.append(entry)
 
-        except ValueError as e:
-            st.error(f"🚫 {e}")
-            st.session_state.messages.append({
-                "id": len(st.session_state.messages),
-                "question": question,
-                "kind": "error",
-                "message": f"🚫 {e}",
-            })
-        except Exception as e:
-            st.error(f"Something went wrong running this query: {e}")
-            st.session_state.messages.append({
-                "id": len(st.session_state.messages),
-                "question": question,
-                "kind": "error",
-                "message": f"Something went wrong running this query: {e}",
-            })
+
+def handle_question(question):
+    """Runs the full pipeline for a question and stores the result in history (does not render)."""
+    with st.spinner("Thinking..."):
+        schema = get_schema_info()
+        sql_query = generate_sql(question, schema)
+
+    if sql_query.strip() == "INVALID_QUESTION":
+        st.session_state.messages.append({
+            "id": len(st.session_state.messages),
+            "question": question,
+            "kind": "invalid",
+        })
+        return
+
+    try:
+        result_df = run_query_safely(sql_query)
+        with st.spinner("Generating insight..."):
+            summary_text = generate_business_summary(question, result_df)
+
+        entry = {
+            "id": len(st.session_state.messages),
+            "question": question,
+            "sql": sql_query,
+            "result": result_df,
+            "summary": summary_text,
+            "kind": "answer",
+        }
+        st.session_state.messages.append(entry)
+
+    except ValueError as e:
+        st.session_state.messages.append({
+            "id": len(st.session_state.messages),
+            "question": question,
+            "kind": "error",
+            "message": f"🚫 {e}",
+        })
+    except Exception as e:
+        st.session_state.messages.append({
+            "id": len(st.session_state.messages),
+            "question": question,
+            "kind": "error",
+            "message": f"Something went wrong running this query: {e}",
+        })
 
 
 # ---------- SUGGESTED QUESTION CHIPS ----------
@@ -188,26 +196,26 @@ for col, question_text in zip(chip_cols, suggested_questions):
 
 st.divider()
 
-# ---------- REPLAY EXISTING CONVERSATION ----------
-for entry in st.session_state.messages:
-    with st.chat_message("user"):
-        st.write(entry["question"])
-    with st.chat_message("assistant"):
-        if entry["kind"] == "invalid":
-            st.warning("Sorry, I couldn't turn that into a valid query. Try rephrasing your question.")
-        elif entry["kind"] == "error":
-            st.error(entry["message"])
-        else:
-            render_answer(entry)
-
-# ---------- CHAT INPUT ----------
+# ---------- CHAT INPUT (docks at bottom automatically, regardless of call order) ----------
 typed_question = st.chat_input("Ask a question about your business data...")
 
 # A clicked suggestion chip takes priority if present this run
 active_question = st.session_state.pending_question or typed_question
 st.session_state.pending_question = None  # clear so it only fires once
 
+# Process the new question FIRST so it lands at the front of the history list
 if active_question:
-    with st.chat_message("user"):
-        st.write(active_question)
     handle_question(active_question)
+
+# ---------- RENDER CONVERSATION: LATEST PROMINENT, REST IN COLLAPSED HISTORY ----------
+if st.session_state.messages:
+    latest_entry = st.session_state.messages[-1]
+    older_entries = st.session_state.messages[:-1]
+
+    render_entry(latest_entry)
+
+    if older_entries:
+        with st.expander(f"📜 Query History ({len(older_entries)})", expanded=False):
+            for entry in reversed(older_entries):
+                render_entry(entry)
+                st.divider()
